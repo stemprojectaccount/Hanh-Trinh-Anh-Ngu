@@ -1,0 +1,145 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Fields: uid, email, displayName, photoURL, role (admin|student)
+    //
+    // Collection: quizzes
+    // Fields: title, description, imageUrl, createdAt
+    //
+    // Collection: quizzes/{quizId}/questions
+    // Fields: quizId, text, options, correctOptionIndex, explanation, imageUrl
+    //
+    // Collection: submissions
+    // Fields: quizId, quizTitle, studentId, studentName, studentEmail, answers, score, totalQuestions, createdAt
+    //
+    // Collection: notifications
+    // Fields: type, recipient, title, message, createdAt, quizId, submissionId
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        ((exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'approved') ||
+         ('email' in request.auth.token && (
+           request.auth.token.email == "pn9055162@gmail.com" ||
+           request.auth.token.email == "tranthanhdat@admin.local" ||
+           request.auth.token.email == "admin@tranthanhdat.local"
+         )));
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'role']) &&
+             data.uid is string && data.uid.size() > 0 &&
+             data.email is string && data.email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$") &&
+             data.role in ['admin', 'student'] &&
+             (!('status' in data) || data.status in ['pending', 'approved', 'rejected']);
+    }
+
+    function isValidQuiz(data) {
+      return data.keys().hasAll(['title']) &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             (!('description' in data) || (data.description is string && data.description.size() < 1000)) &&
+             (!('imageUrl' in data) || (data.imageUrl is string && data.imageUrl.size() < 500)) &&
+             (!('type' in data) || data.type in ['multiple_choice', 'file_upload']) &&
+             (!('fileUrl' in data) || (data.fileUrl is string && data.fileUrl.size() < 1000)) &&
+             (!('fileName' in data) || (data.fileName is string && data.fileName.size() < 200));
+    }
+
+    function isValidQuestion(data) {
+      return data.keys().hasAll(['quizId', 'text', 'options', 'correctOptionIndex']) &&
+             data.quizId is string &&
+             data.text is string && data.text.size() > 0 && data.text.size() < 2000 &&
+             data.options is list && data.options.size() >= 2 && data.options.size() <= 10 &&
+             data.correctOptionIndex is int && data.correctOptionIndex >= 0 && data.correctOptionIndex < data.options.size() &&
+             (!('explanation' in data) || (data.explanation is string && data.explanation.size() < 5000)) &&
+             (!('imageUrl' in data) || (data.imageUrl is string && data.imageUrl.size() < 500));
+    }
+
+    function isValidSubmission(data) {
+      return data.keys().hasAll(['quizId', 'studentName', 'studentClass']) &&
+             data.quizId is string &&
+             data.studentName is string && data.studentName.size() > 0 &&
+             data.studentClass is string && data.studentClass.size() > 0 &&
+             (!('answers' in data) || (data.answers is list)) &&
+             (!('score' in data) || (data.score is number && data.score >= 0)) &&
+             (!('totalQuestions' in data) || (data.totalQuestions is number && data.totalQuestions >= 0)) &&
+             (!('fileUrl' in data) || (data.fileUrl is string && data.fileUrl.size() < 1000)) &&
+             (!('fileName' in data) || (data.fileName is string && data.fileName.size() < 200)) &&
+             (!('status' in data) || data.status in ['submitted', 'graded']) &&
+             (!('teacherFeedback' in data) || (data.teacherFeedback is string && data.teacherFeedback.size() < 2000)) &&
+             (!('note' in data) || (data.note is string && data.note.size() < 2000));
+    }
+
+    function isValidNotification(data) {
+      return data.keys().hasAll(['type', 'recipient', 'title', 'message']) &&
+             data.type in ['new_quiz', 'new_submission', 'quiz_graded'] &&
+             data.recipient is string && data.recipient.size() > 0 && data.recipient.size() < 200 &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.message is string && data.message.size() > 0 && data.message.size() < 1000 &&
+             (!('quizId' in data) || (data.quizId is string && data.quizId.size() < 100)) &&
+             (!('submissionId' in data) || (data.submissionId is string && data.submissionId.size() < 100));
+    }
+
+    // ===============================================================
+    // Match Rules
+    // ===============================================================
+
+    match /usernames/{username} {
+      allow read: if true;
+      allow write: if true; // Allow creation during registration
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isAuthenticated() && isOwner(userId) && isValidUser(request.resource.data) && 
+                    (request.resource.data.role == 'student' || 
+                    (request.resource.data.role == 'admin' && request.resource.data.status == 'pending') ||
+                    isAdmin());
+      allow update: if isAdmin();
+    }
+
+    match /quizzes/{quizId} {
+      allow read: if true; // Allow students to see quizzes without login
+      allow create, update: if isAdmin() && isValidQuiz(request.resource.data);
+      allow delete: if isAdmin();
+      
+      match /questions/{questionId} {
+        allow read: if true; // Allow students to see questions without login
+        allow create, update: if isAdmin() && isValidQuestion(request.resource.data);
+        allow delete: if isAdmin();
+      }
+    }
+
+    match /submissions/{submissionId} {
+      allow read: if true; // Allow students to see their own results
+      allow create: if isValidSubmission(request.resource.data); // Allow students to submit without login
+      allow update, delete: if isAdmin();
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if true; // Allow students and admins to read notifications
+      allow create: if isValidNotification(request.resource.data) && 
+                    ((request.resource.data.type == 'new_submission') || isAdmin());
+      allow update, delete: if isAdmin();
+    }
+  }
+}

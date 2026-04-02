@@ -1,0 +1,116 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and role",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "student"] },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "photoURL": { "type": "string" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Quiz": {
+      "title": "Quiz",
+      "description": "A quiz containing multiple questions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title"]
+    },
+    "Question": {
+      "title": "Question",
+      "description": "A single question in a quiz",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "quizId": { "type": "string" },
+        "text": { "type": "string" },
+        "options": { "type": "array", "items": { "type": "string" } },
+        "correctOptionIndex": { "type": "integer" },
+        "explanation": { "type": "string" },
+        "imageUrl": { "type": "string" }
+      },
+      "required": ["quizId", "text", "options", "correctOptionIndex"]
+    },
+    "Submission": {
+      "title": "Submission",
+      "description": "A student's submission for a quiz",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "quizId": { "type": "string" },
+        "quizTitle": { "type": "string" },
+        "studentId": { "type": "string" },
+        "studentName": { "type": "string" },
+        "studentEmail": { "type": "string" },
+        "studentClass": { "type": "string" },
+        "answers": { "type": "array", "items": { "type": "integer" } },
+        "score": { "type": "integer" },
+        "totalQuestions": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["quizId", "studentName", "studentClass", "answers", "score", "totalQuestions"]
+    },
+    "UsernameMapping": {
+      "title": "Username Mapping",
+      "description": "Maps a username to an email address for login",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" }
+      },
+      "required": ["email"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "System notifications for users",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string", "enum": ["new_quiz", "new_submission", "quiz_graded"] },
+        "recipient": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "quizId": { "type": "string" },
+        "submissionId": { "type": "string" }
+      },
+      "required": ["type", "recipient", "title", "message"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/usernames/{username}": {
+      "schema": "UsernameMapping",
+      "description": "Username to email mappings"
+    },
+    "/quizzes/{quizId}": {
+      "schema": "Quiz",
+      "description": "Quizzes"
+    },
+    "/quizzes/{quizId}/questions/{questionId}": {
+      "schema": "Question",
+      "description": "Questions for a quiz"
+    },
+    "/submissions/{submissionId}": {
+      "schema": "Submission",
+      "description": "Quiz submissions"
+    },
+    "/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "System notifications"
+    }
+  }
+}
